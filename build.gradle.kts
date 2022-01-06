@@ -62,10 +62,6 @@ dependencies {
   testImplementation(group = "junit", name = "junit", version = "4.12")
 }
 
-// artifacts {
-//   archives(tasks["kotlinSourcesJar"])
-// }
-
 protobuf {
   protoc {
     artifact = "com.google.protobuf:protoc:3.17.1"
