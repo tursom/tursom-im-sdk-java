@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+option optimize_for = SPEED;
+
+package cn.tursom.im.protobuf;
+option java_outer_classname = "TursomSystemMsg";
+option go_package = "./tursom_im_protobuf";
+
+message ListenLiveRoom {
+  string roomId = 1;
+  string liver = 2;
+}
+
+message ListLiveRoomRequest {
+}
+
+message ListLiveRoomResponse {
+  string uid = 1;
+  repeated string roomId = 2;
+}
+
+message AddMailReceiver {
+  string          receiver = 1;
+  bool            all = 2;
+  repeated string roomId = 3;
+}
+
+message GetLiveDanmuRecordList {
+  string reqId = 1;
+  string roomId = 2;
+  int32  skip = 3;
+  int32  limit = 4;
+}
+
+message ReturnLiveDanmuRecordList {
+  string                   reqId = 1;
+  string                   roomId = 2;
+  repeated LiveDanmuRecord recordList = 3;
+}
+
+message LiveDanmuRecord {
+  string id = 1;
+  uint64 start = 2;
+  uint64 stop = 3;
+}
+
+message GetLiveDanmuRecord {
+  string reqId = 1;
+  string liveDanmuRecordId = 2;
+}
+
+message ReturnLiveDanmuRecord {
+  string reqId = 1;
+  bool   exist = 2;
+  bytes  data = 3;
+}
+
+message LiveRecordReady {
+  string reqId = 1;
+  string roomId = 2;
+  int64 start = 3;
+  int64 stop = 4;
+  string url = 5;
+}

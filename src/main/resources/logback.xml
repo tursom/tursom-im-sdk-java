@@ -1,0 +1,72 @@
+<configuration scan="true" scanPeriod="60 seconds" debug="false">
+    <property name="mode-name" value="tursom-im-sdk"/>
+    <contextName>${mode-name}</contextName>
+
+    <appender name="ERROR" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>log/${mode-name}.err.log</file>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>3gb</totalSizeCap>
+            <FileNamePattern>log/${mode-name}.err.%d{yyyy-MM-dd}.log.gz</FileNamePattern>
+        </rollingPolicy>
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <Pattern
+            >%green(%d{yyyy-MM-dd HH:mm:ss.SSS}) %magenta([%t]) %highlight(%p) %cyan([%L %c{20}]) - %highlight(%m)\n
+            </Pattern>
+        </encoder>
+    </appender>
+
+    <appender name="ASYNC" class="cn.tursom.log.AsyncAppender">
+        <!-- 不丢失日志.默认的,如果队列的80%已满,则会丢弃TRACT、DEBUG、INFO级别的日志 -->
+        <discardingThreshold>0</discardingThreshold>
+        <!-- 更改默认的队列的深度,该值会影响性能.默认值为256 -->
+        <queueSize>512</queueSize>
+
+        <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+            <!--<filter class="ch.qos.logback.classic.filter.ThresholdFilter">-->
+            <!--    <level>INFO</level>-->
+            <!--    <onMatch>ACCEPT</onMatch>-->
+            <!--    &lt;!&ndash;<onMatch>DENY</onMatch>&ndash;&gt;-->
+            <!--    <onMismatch>DENY</onMismatch>-->
+            <!--</filter>-->
+            <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+                <Pattern
+                >%green(%d{yyyy-MM-dd HH:mm:ss.SSS}) %magenta([%t]) %highlight(%p) %cyan([%L %c{20}]) - %highlight(%m)\n
+                </Pattern>
+            </encoder>
+        </appender>
+    </appender>
+
+    <!--<appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">-->
+    <!--    <http class="com.github.loki4j.logback.ApacheHttpSender">-->
+    <!--        <url>http://192.168.0.61:3100/loki/api/v1/push</url>-->
+    <!--    </http>-->
+    <!--    <format class="cn.tursom.log.JsonLokiEncoder">-->
+    <!--        <label>-->
+    <!--            <pattern>app=${mode-name},host=${HOSTNAME},level=%level,logger=%logger</pattern>-->
+    <!--        </label>-->
+    <!--        <message>-->
+    <!--            <pattern>-->
+    <!--                %green([${HOSTNAME}]) %magenta([%t]) %highlight(%p) %cyan([%logger{20}]) - %m-->
+    <!--            </pattern>-->
+    <!--        </message>-->
+    <!--        <sortByTime>true</sortByTime>-->
+    <!--    </format>-->
+    <!--</appender>-->
+
+    <!--<root level="ERROR">-->
+    <root level="info">
+        <!--<root level="debug">-->
+        <!--<appender-ref ref="FILE"/>-->
+        <appender-ref ref="ERROR"/>
+        <appender-ref ref="ASYNC"/>
+        <!--<appender-ref ref="LOKI"/>-->
+    </root>
+    <logger name="com" level="info"/>
+    <logger name="cn.tursom" level="debug"/>
+</configuration>

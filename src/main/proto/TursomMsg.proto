@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+import "google/protobuf/any.proto";
+option optimize_for = SPEED;
+
+package cn.tursom.im.protobuf;
+option java_outer_classname = "TursomMsg";
+option go_package = "./tursom_im_protobuf";
+
+message ImMsg {
+  string msgId = 1;
+  bool selfMsg = 7;
+  oneof content {
+    LoginRequest loginRequest = 2;
+    LoginResult loginResult = 3;
+    ChatMsg chatMsg = 4;
+    SendMsgRequest sendMsgRequest = 5;
+    SendMsgResponse sendMsgResponse = 6;
+    string heartBeat = 8;
+    AllocateNodeRequest allocateNodeRequest = 9;
+    AllocateNodeResponse allocateNodeResponse = 10;
+    ListenBroadcastRequest listenBroadcastRequest = 11;
+    ListenBroadcastResponse listenBroadcastResponse = 12;
+    SendBroadcastRequest sendBroadcastRequest = 13;
+    SendBroadcastResponse sendBroadcastResponse = 14;
+    Broadcast broadcast = 15;
+  }
+}
+
+message LoginRequest {
+  string token = 1;
+}
+
+message LoginResult {
+  bool success = 1;
+  string imUserId = 2;
+}
+
+enum FailType {
+  UNKNOWN = 0;
+  IN_BLACKLIST = 1;
+  TARGET_NOT_LOGIN = 2;
+  MSG_SAVE_FAILURE = 3;
+  TARGET_IS_EMPTY = 4;
+  GROUP_NOT_EXIST = 5;
+  GROUP_MUTED = 6;
+  GROUP_USER_MUTED = 7;
+  USER_NOT_IN_GROUP = 8;
+}
+
+message MsgContent {
+  oneof content {
+    string msg = 1;
+    google.protobuf.Any ext = 2;
+  }
+}
+
+message SendMsgRequest {
+  string receiver = 1;
+  string reqId = 2;
+  MsgContent content = 3;
+}
+
+message SendMsgResponse {
+  string receiver = 1;
+  string reqId = 2;
+  bool success = 3;
+  string failMsg = 4;
+  FailType failType = 5;
+}
+
+message ChatMsg {
+  string receiver = 1;
+  string sender = 2;
+  MsgContent content = 3;
+}
+
+message AllocateNodeRequest {
+  string reqId = 1;
+  int32 mask = 2;
+  string currentNodeName = 3;
+}
+
+message AllocateNodeResponse {
+  string reqId = 1;
+  int32 node = 2;
+}
+
+message ListenBroadcastRequest {
+  string reqId = 1;
+  int32 channel = 2;
+  bool cancelListen = 3;
+}
+
+message ListenBroadcastResponse {
+  string reqId = 1;
+  bool success = 2;
+}
+
+message SendBroadcastRequest {
+  string reqId = 1;
+  int32 channel = 2;
+  MsgContent content = 3;
+}
+
+message SendBroadcastResponse {
+  string reqId = 1;
+  bool success = 2;
+  int32 receiverCount = 3;
+}
+
+message Broadcast {
+  string sender = 1;
+  string reqId = 2;
+  int32 channel = 3;
+  MsgContent content = 4;
+}
