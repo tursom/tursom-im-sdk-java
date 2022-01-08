@@ -1,5 +1,6 @@
 package cn.tursom.im
 
+import cn.tursom.core.reflect.MethodInspector
 import cn.tursom.core.uncheckedCast
 import cn.tursom.im.protobuf.TursomMsg
 import cn.tursom.im.protobuf.TursomSystemMsg
@@ -68,6 +69,24 @@ class TursomSystemMsgHandler(
     registerReturnLiveDanmuRecordHandler { client, receiveMsg, listenLiveRoom ->
       val handler = liveDanmuRecordHandlerMap.getIfPresent(listenLiveRoom.reqId)
       handler?.invoke(client, receiveMsg, listenLiveRoom)
+    }
+  }
+
+  /**
+   * 解析对象的所有方法，并将该方法注册为处理方法
+   * 方法签名为:
+   * suspend fun 方法名(client: ImWebSocketClient, receiveMsg: TursomMsg.ImMsg, msg: T)
+   * T 为 Message 的子类
+   */
+  fun registerHandlerObject(handler: Any) {
+    MethodInspector.forEachSuspendMethod(
+      handler,
+      Unit::class.java,
+      ImWebSocketClient::class.java,
+      TursomMsg.ImMsg::class.java,
+      Message::class.java
+    ) { method, handlerCallback ->
+      registerHandler(method.parameterTypes[method.parameterTypes.size - 2].uncheckedCast(), handlerCallback)
     }
   }
 

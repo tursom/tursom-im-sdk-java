@@ -7,7 +7,7 @@ option java_outer_classname = "TursomSystemMsg";
 option go_package = "./tursom_im_protobuf";
 
 message ListenLiveRoom {
-  string roomId = 1;
+  uint64 roomId = 1;
   string liver = 2;
 }
 
@@ -16,7 +16,7 @@ message ListLiveRoomRequest {
 
 message ListLiveRoomResponse {
   string uid = 1;
-  repeated string roomId = 2;
+  repeated uint64 roomId = 2;
 }
 
 message AddMailReceiver {
@@ -61,4 +61,12 @@ message LiveRecordReady {
   int64 start = 3;
   int64 stop = 4;
   string url = 5;
+}
+
+message GetServiceRequest {
+  uint32 serviceId = 1;
+}
+
+message GetServiceResponse {
+  uint32 serviceId = 1;
 }

@@ -17,6 +17,9 @@ buildscript {
   }
 }
 
+group = "cn.tursom"
+version = "1.0-SNAPSHOT"
+
 apply(plugin = "ts-gradle")
 
 plugins {
@@ -25,9 +28,6 @@ plugins {
   id("com.google.protobuf") version "0.8.16"
   `maven-publish`
 }
-
-group = "cn.tursom"
-version = "1.0-SNAPSHOT"
 
 repositories {
   // mavenLocal()
@@ -55,6 +55,7 @@ dependencies {
   api(group = "cn.tursom", name = "ts-delegation", version = tursomServerVersion)
   api(group = "cn.tursom", name = "ts-ws-client", version = tursomServerVersion)
   api(group = "cn.tursom", name = "ts-coroutine", version = tursomServerVersion)
+//  implementation(group = "cn.tursom", name = "ts-reflect", version = tursomServerVersion)
   implementation(group = "cn.tursom", name = "ts-log", version = tursomServerVersion)
   api(group = "com.google.protobuf", name = "protobuf-java", version = "3.17.3")
   implementation(group = "com.github.ben-manes.caffeine", name = "caffeine", version = "2.9.2")
@@ -97,18 +98,3 @@ if (project.gradle.startParameter.taskNames.firstOrNull { taskName ->
     enabled = false
   }
 }
-
-// tasks.register("install") {
-//   // dependsOn(tasks["build"])
-//   finalizedBy(tasks["publishToMavenLocal"])
-// }
-
-// publishing {
-//   publish(this)
-// }
-
-// dependencyManagement {
-//   resolutionStrategy {
-//     cacheChangingModulesFor(0, TimeUnit.SECONDS)
-//   }
-// }

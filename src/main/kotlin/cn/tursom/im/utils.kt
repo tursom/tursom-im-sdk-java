@@ -3,11 +3,13 @@ package cn.tursom.im
 import cn.tursom.core.Snowflake
 import cn.tursom.core.base62
 import cn.tursom.core.seconds
+import cn.tursom.im.exception.LoginFailedException
 import cn.tursom.im.protobuf.TursomMsg
 import cn.tursom.im.protobuf.TursomSystemMsg
 import com.google.protobuf.Message
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.CountDownLatch
 
 val imSnowflake = Snowflake(0)
 
@@ -21,6 +23,35 @@ fun connect(
     webSocketClient.handler.handleMsg(TursomMsg.ImMsg.ContentCase.LOGINRESULT, onLogin)
   }
   webSocketClient.open()
+  return webSocketClient
+}
+
+fun connectAndWait(
+  url: String,
+  token: String,
+  onLogin: (suspend (client: ImWebSocketClient, receiveMsg: TursomMsg.ImMsg) -> Unit)? = null,
+): ImWebSocketClient {
+  var exception: Throwable? = null
+  val cdl = CountDownLatch(1)
+  val webSocketClient = ImWebSocketClient(url, token)
+  webSocketClient.handler.handleMsg(TursomMsg.ImMsg.ContentCase.LOGINRESULT) { client, receiveMsg ->
+    if (receiveMsg.loginResult.success) {
+      if (onLogin != null) try {
+        onLogin(client, receiveMsg)
+      } catch (e: Throwable) {
+        exception = e
+      }
+    } else {
+      exception = LoginFailedException("login failed")
+    }
+    cdl.countDown()
+  }
+  webSocketClient.open()
+
+  cdl.await()
+  if (exception != null) {
+    throw exception!!
+  }
   return webSocketClient
 }
 
