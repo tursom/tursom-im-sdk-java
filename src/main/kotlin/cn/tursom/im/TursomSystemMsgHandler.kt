@@ -21,16 +21,12 @@ class TursomSystemMsgHandler(
 
   private val handlerMap = ConcurrentHashMap<Class<out Message>,
     suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       unpackMsg: Any,
       msgSender: MsgSender,
     ) -> Unit>()
 
   private val msgContextHandlerMap: Cache<TursomMsg.MsgContent.ContentCase,
     suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       msgSender: MsgSender,
     ) -> Unit> =
     Caffeine.newBuilder()
@@ -39,8 +35,6 @@ class TursomSystemMsgHandler(
 
   private val liveDanmuRecordListHandlerMap: Cache<String,
     suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecordList,
       msgSender: MsgSender,
     ) -> Unit> =
@@ -50,8 +44,6 @@ class TursomSystemMsgHandler(
 
   private val liveDanmuRecordHandlerMap: Cache<String,
     suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecord,
       msgSender: MsgSender,
     ) -> Unit> =
@@ -61,7 +53,7 @@ class TursomSystemMsgHandler(
 
   var default: suspend (client: ImWebSocketClient, receiveMsg: TursomMsg.ImMsg) -> Unit = { client, receiveMsg ->
     msgContextHandlerMap.getIfPresent(receiveMsg.broadcast.content.contentCase)
-      ?.invoke(client, receiveMsg, BroadcastMsgSender(client, receiveMsg))
+      ?.invoke(BroadcastMsgSender(client, receiveMsg))
   }
 
   init {
@@ -69,13 +61,13 @@ class TursomSystemMsgHandler(
       registerToImWebSocketHandler(imWebSocketHandler)
     }
 
-    registerReturnLiveDanmuRecordListHandler { client, receiveMsg, listenLiveRoom, msgSender ->
+    registerReturnLiveDanmuRecordListHandler { listenLiveRoom, msgSender ->
       val handler = liveDanmuRecordListHandlerMap.getIfPresent(listenLiveRoom.reqId)
-      handler?.invoke(client, receiveMsg, listenLiveRoom, msgSender)
+      handler?.invoke(listenLiveRoom, msgSender)
     }
-    registerReturnLiveDanmuRecordHandler { client, receiveMsg, listenLiveRoom, msgSender ->
+    registerReturnLiveDanmuRecordHandler { listenLiveRoom, msgSender ->
       val handler = liveDanmuRecordHandlerMap.getIfPresent(listenLiveRoom.reqId)
-      handler?.invoke(client, receiveMsg, listenLiveRoom, msgSender)
+      handler?.invoke(listenLiveRoom, msgSender)
     }
   }
 
@@ -83,8 +75,6 @@ class TursomSystemMsgHandler(
    * 解析对象的所有方法，并将该方法注册为处理方法
    * 方法签名为:
    * suspend fun 方法名(
-   *     client: ImWebSocketClient,
-   *     receiveMsg: TursomMsg.ImMsg,
    *     msg: T,
    *     msgSender: MsgSender,
    * )
@@ -94,8 +84,6 @@ class TursomSystemMsgHandler(
     MethodInspector.forEachSuspendMethod(
       handler,
       Unit::class.java,
-      ImWebSocketClient::class.java,
-      TursomMsg.ImMsg::class.java,
       Message::class.java,
       getType<MsgSender>()
     ) { method, handlerCallback ->
@@ -110,8 +98,6 @@ class TursomSystemMsgHandler(
   fun handle(
     contentCase: TursomMsg.MsgContent.ContentCase,
     handler: suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       msgSender: MsgSender,
     ) -> Unit,
   ) {
@@ -126,8 +112,6 @@ class TursomSystemMsgHandler(
   fun addLiveDanmuRecordListHandler(
     reqId: String,
     handler: suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecordList,
       msgSender: MsgSender,
     ) -> Unit,
@@ -138,8 +122,6 @@ class TursomSystemMsgHandler(
   fun addLiveDanmuRecordHandler(
     reqId: String,
     handler: suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecord,
       msgSender: MsgSender,
     ) -> Unit,
@@ -183,7 +165,7 @@ class TursomSystemMsgHandler(
       }
       @Suppress("BlockingMethodInNonBlockingContext")
       val unpackMsg = ext.unpack(clazz)
-      handler(client, receiveMsg, unpackMsg, msgSender)
+      handler(unpackMsg, msgSender)
       return
     }
 
@@ -193,8 +175,6 @@ class TursomSystemMsgHandler(
 
   inline fun <reified T : Message> registerHandler(
     noinline handler: suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       unpackMsg: T,
       msgSender: MsgSender,
     ) -> Unit,
@@ -203,8 +183,6 @@ class TursomSystemMsgHandler(
   fun <T : Message> registerHandler(
     clazz: Class<T>,
     handler: suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       unpackMsg: T,
       msgSender: MsgSender,
     ) -> Unit,
@@ -214,8 +192,6 @@ class TursomSystemMsgHandler(
 
   fun registerListenLiveRoomHandler(
     handler: suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.ListenLiveRoom,
       msgSender: MsgSender,
     ) -> Unit,
@@ -223,8 +199,6 @@ class TursomSystemMsgHandler(
 
   fun registerAddMailReceiverHandler(
     handler: suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.AddMailReceiver,
       msgSender: MsgSender,
     ) -> Unit,
@@ -232,8 +206,6 @@ class TursomSystemMsgHandler(
 
   fun registerGetLiveDanmuRecordListHandler(
     handler: suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.GetLiveDanmuRecordList,
       msgSender: MsgSender,
     ) -> Unit,
@@ -241,8 +213,6 @@ class TursomSystemMsgHandler(
 
   fun registerReturnLiveDanmuRecordListHandler(
     handler: suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecordList,
       msgSender: MsgSender,
     ) -> Unit,
@@ -250,8 +220,6 @@ class TursomSystemMsgHandler(
 
   fun registerGetLiveDanmuRecordHandler(
     handler: suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.GetLiveDanmuRecord,
       msgSender: MsgSender,
     ) -> Unit,
@@ -259,8 +227,6 @@ class TursomSystemMsgHandler(
 
   fun registerReturnLiveDanmuRecordHandler(
     handler: suspend (
-      client: ImWebSocketClient,
-      receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecord,
       msgSender: MsgSender,
     ) -> Unit,
