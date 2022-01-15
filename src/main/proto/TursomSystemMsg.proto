@@ -63,10 +63,19 @@ message LiveRecordReady {
   string url = 5;
 }
 
+/**
+ * 获取支持的服务列表
+ */
 message GetServiceRequest {
-  uint32 serviceId = 1;
+  string reqId = 1;
+  repeated string serviceId = 2;
 }
 
+/**
+ * 返回支持的服务列表
+ */
 message GetServiceResponse {
-  uint32 serviceId = 1;
+  string reqId = 1;
+  repeated string systemServiceId = 2;
+  repeated string broadServiceId = 3;
 }

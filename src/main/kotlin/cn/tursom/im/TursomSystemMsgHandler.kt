@@ -19,6 +19,15 @@ class TursomSystemMsgHandler(
   companion object : Slf4jImpl() {
   }
 
+  val handlerTypeUrlSet: Set<String>
+    get() {
+      val handlerTypeUrlSet = HashSet<String>()
+      handlerMap.forEach { (clazz, _) ->
+        handlerTypeUrlSet.add(AnyUtils.getTypeUrl(clazz))
+      }
+      return handlerTypeUrlSet
+    }
+
   private val handlerMap = ConcurrentHashMap<Class<out Message>,
     suspend (
       unpackMsg: Any,
@@ -138,7 +147,7 @@ class TursomSystemMsgHandler(
     }
 
     val ext = receiveMsg.chatMsg.content.ext
-    handleExt(client, receiveMsg, ext, SystemMsgSender(client, receiveMsg))
+    handleExt(ext, SystemMsgSender(client, receiveMsg))
   }
 
   suspend fun handleBroadcast(client: ImWebSocketClient, receiveMsg: TursomMsg.ImMsg) {
@@ -150,12 +159,10 @@ class TursomSystemMsgHandler(
     }
 
     val ext = receiveMsg.chatMsg.content.ext
-    handleExt(client, receiveMsg, ext, BroadcastMsgSender(client, receiveMsg))
+    handleExt(ext, BroadcastMsgSender(client, receiveMsg))
   }
 
   suspend fun handleExt(
-    client: ImWebSocketClient,
-    receiveMsg: TursomMsg.ImMsg,
     ext: com.google.protobuf.Any,
     msgSender: MsgSender,
   ) {
