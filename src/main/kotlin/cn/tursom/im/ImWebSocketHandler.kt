@@ -72,6 +72,14 @@ open class ImWebSocketHandler(
       }
     }
 
+    handleMsg(TursomMsg.ImMsg.ContentCase.CHATMSG) { client, receiveMsg ->
+      val chatMsg = receiveMsg.chatMsg
+      if (chatMsg.content.contentCase != TursomMsg.MsgContent.ContentCase.EXT) {
+        return@handleMsg
+      }
+      system.handle(client, receiveMsg)
+    }
+
     handleMsg(TursomMsg.ImMsg.ContentCase.SENDMSGRESPONSE) { client, receiveMsg ->
       val reqId = receiveMsg.sendMsgResponse.reqId
       val handler = chatHandlerMap.getIfPresent(reqId)

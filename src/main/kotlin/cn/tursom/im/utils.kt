@@ -95,7 +95,7 @@ suspend fun ImWebSocketClient.callGetLiveDanmuRecordList(
       .build(),
     timeoutMs
   ) { cont ->
-    handler.system.addLiveDanmuRecordListHandler(callReqId) { _, _, listenLiveRoom ->
+    handler.system.addLiveDanmuRecordListHandler(callReqId) { _, _, listenLiveRoom, _ ->
       cont(listenLiveRoom)
     }
   }
@@ -115,7 +115,7 @@ suspend fun ImWebSocketClient.callGetLiveDanmuRecord(
       .build(),
     timeoutMs
   ) { cont ->
-    handler.system.addLiveDanmuRecordHandler(callReqId) { _, _, listenLiveRoom ->
+    handler.system.addLiveDanmuRecordHandler(callReqId) { _, _, listenLiveRoom, _ ->
       cont(listenLiveRoom)
     }
   }
