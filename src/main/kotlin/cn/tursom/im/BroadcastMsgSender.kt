@@ -9,7 +9,7 @@ class BroadcastMsgSender(
 ) : MsgSender {
   override val sender: String = receiveMsg.broadcast.sender
   override val channel: Int = receiveMsg.broadcast.channel
-  override suspend fun invoke(msg: Message) {
+  override suspend fun send(msg: Message) {
     client.sendBroadcast(channel, msg)
   }
 }
