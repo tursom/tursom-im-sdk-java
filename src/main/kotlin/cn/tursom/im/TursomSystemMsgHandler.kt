@@ -17,15 +17,6 @@ class TursomSystemMsgHandler(
   imWebSocketHandler: ImWebSocketHandler? = null,
 ) {
   companion object : Slf4jImpl() {
-    private fun systemMsgSender(uid: String): suspend (client: ImWebSocketClient, msg: Message) -> Unit =
-      { client, msg ->
-        client.sendExtMsg(uid, msg)
-      }
-
-    private fun broadcastMsgSender(channel: Int): suspend (client: ImWebSocketClient, msg: Message) -> Unit =
-      { client, msg ->
-        client.sendBroadcast(channel, msg)
-      }
   }
 
   private val handlerMap = ConcurrentHashMap<Class<out Message>,
@@ -33,14 +24,14 @@ class TursomSystemMsgHandler(
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
       unpackMsg: Any,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit>()
 
   private val msgContextHandlerMap: Cache<TursomMsg.MsgContent.ContentCase,
     suspend (
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit> =
     Caffeine.newBuilder()
       .expireAfterWrite(1, TimeUnit.MINUTES)
@@ -51,7 +42,7 @@ class TursomSystemMsgHandler(
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecordList,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit> =
     Caffeine.newBuilder()
       .expireAfterWrite(1, TimeUnit.MINUTES)
@@ -62,7 +53,7 @@ class TursomSystemMsgHandler(
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecord,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit> =
     Caffeine.newBuilder()
       .expireAfterWrite(1, TimeUnit.MINUTES)
@@ -70,7 +61,7 @@ class TursomSystemMsgHandler(
 
   var default: suspend (client: ImWebSocketClient, receiveMsg: TursomMsg.ImMsg) -> Unit = { client, receiveMsg ->
     msgContextHandlerMap.getIfPresent(receiveMsg.broadcast.content.contentCase)
-      ?.invoke(client, receiveMsg, broadcastMsgSender(receiveMsg.broadcast.channel))
+      ?.invoke(client, receiveMsg, BroadcastMsgSender(client, receiveMsg))
   }
 
   init {
@@ -95,7 +86,7 @@ class TursomSystemMsgHandler(
    *     client: ImWebSocketClient,
    *     receiveMsg: TursomMsg.ImMsg,
    *     msg: T,
-   *     msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+   *     msgSender: MsgSender,
    * )
    * T 为 Message 的子类
    */
@@ -106,7 +97,7 @@ class TursomSystemMsgHandler(
       ImWebSocketClient::class.java,
       TursomMsg.ImMsg::class.java,
       Message::class.java,
-      getType<suspend (client: ImWebSocketClient, msg: Message) -> Unit>()
+      getType<MsgSender>()
     ) { method, handlerCallback ->
       registerHandler(method.parameterTypes[method.parameterTypes.size - 2].uncheckedCast(), handlerCallback)
     }
@@ -121,7 +112,7 @@ class TursomSystemMsgHandler(
     handler: suspend (
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit,
   ) {
     msgContextHandlerMap.put(contentCase, handler)
@@ -138,7 +129,7 @@ class TursomSystemMsgHandler(
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecordList,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit,
   ) {
     liveDanmuRecordListHandlerMap.put(reqId, handler)
@@ -150,7 +141,7 @@ class TursomSystemMsgHandler(
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecord,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit,
   ) {
     liveDanmuRecordHandlerMap.put(reqId, handler)
@@ -165,7 +156,7 @@ class TursomSystemMsgHandler(
     }
 
     val ext = receiveMsg.chatMsg.content.ext
-    handleExt(client, receiveMsg, ext, systemMsgSender(receiveMsg.chatMsg.sender))
+    handleExt(client, receiveMsg, ext, SystemMsgSender(client, receiveMsg))
   }
 
   suspend fun handleBroadcast(client: ImWebSocketClient, receiveMsg: TursomMsg.ImMsg) {
@@ -177,14 +168,14 @@ class TursomSystemMsgHandler(
     }
 
     val ext = receiveMsg.chatMsg.content.ext
-    handleExt(client, receiveMsg, ext, broadcastMsgSender(receiveMsg.broadcast.channel))
+    handleExt(client, receiveMsg, ext, BroadcastMsgSender(client, receiveMsg))
   }
 
   suspend fun handleExt(
     client: ImWebSocketClient,
     receiveMsg: TursomMsg.ImMsg,
     ext: com.google.protobuf.Any,
-    msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+    msgSender: MsgSender,
   ) {
     handlerMap.forEach { (clazz, handler) ->
       if (!ext.`is`(clazz)) {
@@ -205,7 +196,7 @@ class TursomSystemMsgHandler(
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
       unpackMsg: T,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit,
   ) = registerHandler(T::class.java, handler)
 
@@ -215,7 +206,7 @@ class TursomSystemMsgHandler(
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
       unpackMsg: T,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit,
   ) {
     handlerMap[clazz] = handler.uncheckedCast()
@@ -226,7 +217,7 @@ class TursomSystemMsgHandler(
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.ListenLiveRoom,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit,
   ) = registerHandler(handler)
 
@@ -235,7 +226,7 @@ class TursomSystemMsgHandler(
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.AddMailReceiver,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit,
   ) = registerHandler(handler)
 
@@ -244,7 +235,7 @@ class TursomSystemMsgHandler(
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.GetLiveDanmuRecordList,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit,
   ) = registerHandler(handler)
 
@@ -253,7 +244,7 @@ class TursomSystemMsgHandler(
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecordList,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit,
   ) = registerHandler(handler)
 
@@ -262,7 +253,7 @@ class TursomSystemMsgHandler(
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.GetLiveDanmuRecord,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit,
   ) = registerHandler(handler)
 
@@ -271,7 +262,7 @@ class TursomSystemMsgHandler(
       client: ImWebSocketClient,
       receiveMsg: TursomMsg.ImMsg,
       listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecord,
-      msgSender: suspend (client: ImWebSocketClient, msg: Message) -> Unit,
+      msgSender: MsgSender,
     ) -> Unit,
   ) = registerHandler(handler)
 }
