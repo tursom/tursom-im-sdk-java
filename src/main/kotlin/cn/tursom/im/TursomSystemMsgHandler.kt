@@ -96,7 +96,7 @@ class TursomSystemMsgHandler(
       Message::class.java,
       getType<MsgSender>()
     ) { method, handlerCallback ->
-      registerHandler(method.parameterTypes[method.parameterTypes.size - 2].uncheckedCast(), handlerCallback)
+      registerHandler(method.parameterTypes[method.parameterTypes.size - 3].uncheckedCast(), handlerCallback)
     }
   }
 
@@ -158,7 +158,7 @@ class TursomSystemMsgHandler(
       return
     }
 
-    val ext = receiveMsg.chatMsg.content.ext
+    val ext = receiveMsg.broadcast.content.ext
     handleExt(ext, BroadcastMsgSender(client, receiveMsg))
   }
 

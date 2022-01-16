@@ -8,6 +8,7 @@ interface MsgSender : suspend (Message) -> Unit {
   val receiveMsg: TursomMsg.ImMsg
   val sender: String
   val channel: Int get() = -1
+  val reqId: String
 
   suspend fun send(msg: Message)
   override suspend fun invoke(msg: Message) = send(msg)

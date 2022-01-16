@@ -27,11 +27,10 @@ class ImConnectTest {
     val webSocketHandler = imWebSocketClient.handler
     val tursomSystemMsgHandler = webSocketHandler.system
 
-    tursomSystemMsgHandler.registerGetLiveDanmuRecordListHandler { client, receiveMsg, listenLiveRoom ->
-      client.sendExtMsg(
-        receiveMsg.chatMsg.sender,
+    tursomSystemMsgHandler.registerGetLiveDanmuRecordListHandler { receiveMsg, msgSender ->
+      msgSender.send(
         TursomSystemMsg.ReturnLiveDanmuRecordList.newBuilder()
-          .setReqId(listenLiveRoom.reqId)
+          .setReqId(msgSender.reqId)
           .addRecordList(TursomSystemMsg.LiveDanmuRecord.newBuilder()
             .setId("test id")
             .setStart(1)

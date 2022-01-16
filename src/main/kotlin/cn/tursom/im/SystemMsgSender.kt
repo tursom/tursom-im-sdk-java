@@ -8,6 +8,8 @@ class SystemMsgSender(
   override val receiveMsg: TursomMsg.ImMsg,
 ) : MsgSender {
   override val sender: String = receiveMsg.chatMsg.sender
+  override val reqId: String = sender
+
   override suspend fun send(msg: Message) {
     client.sendExtMsg(sender, msg)
   }
