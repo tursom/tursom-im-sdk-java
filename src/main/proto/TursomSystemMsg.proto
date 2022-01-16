@@ -6,6 +6,12 @@ package cn.tursom.im.protobuf;
 option java_outer_classname = "TursomSystemMsg";
 option go_package = "./tursom_im_protobuf";
 
+enum CompressTypeEnum {
+  NONE = 0;
+  GZ = 1;
+  ZIP = 2;
+}
+
 message ListenLiveRoom {
   uint64 roomId = 1;
   string liver = 2;
@@ -42,6 +48,7 @@ message LiveDanmuRecord {
   string id = 1;
   uint64 start = 2;
   uint64 stop = 3;
+  uint64 size = 4;
 }
 
 message GetLiveDanmuRecord {
@@ -53,6 +60,7 @@ message ReturnLiveDanmuRecord {
   string reqId = 1;
   bool   exist = 2;
   bytes  data = 3;
+  CompressTypeEnum compress = 4;
 }
 
 message LiveRecordReady {

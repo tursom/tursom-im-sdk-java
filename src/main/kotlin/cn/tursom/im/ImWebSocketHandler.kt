@@ -27,10 +27,9 @@ open class ImWebSocketHandler(
     .expireAfterWrite(1, TimeUnit.MINUTES)
     .build<String,
       suspend (client: ImWebSocketClient, imMsg: TursomMsg.ImMsg) -> Unit>()
-  private val broadcastHandlerMap = Caffeine.newBuilder()
-    .expireAfterWrite(1, TimeUnit.MINUTES)
-    .build<Int,
-      suspend (client: ImWebSocketClient, imMsg: TursomMsg.ImMsg) -> Unit>()
+  private val broadcastHandlerMap = ConcurrentHashMap<
+    Int,
+    suspend (client: ImWebSocketClient, imMsg: TursomMsg.ImMsg) -> Unit>()
 
   init {
     onOpen { client ->
@@ -51,6 +50,7 @@ open class ImWebSocketHandler(
 
         if (imMsg.contentCase == TursomMsg.ImMsg.ContentCase.LOGINRESULT) {
           client.currentUserId = imMsg.loginResult.imUserId
+          client.login = imMsg.loginResult.success
           if (imMsg.loginResult.success) {
             client.allocateNode(currentNodeName)
 
@@ -68,7 +68,11 @@ open class ImWebSocketHandler(
           }
         }
 
-        handlerMap[imMsg.contentCase]?.invoke(client, imMsg)
+        try {
+          handlerMap[imMsg.contentCase]?.invoke(client, imMsg)
+        } catch (e: Exception) {
+          log.error("an exception caused on handle im msg", e)
+        }
       }
     }
 
@@ -94,7 +98,7 @@ open class ImWebSocketHandler(
 
     handleMsg(TursomMsg.ImMsg.ContentCase.BROADCAST) { client, receiveMsg ->
       val channel = receiveMsg.broadcast.channel
-      val handler = broadcastHandlerMap.getIfPresent(channel)
+      val handler = broadcastHandlerMap[channel]
       handler?.invoke(client, receiveMsg)
     }
   }
@@ -141,9 +145,9 @@ open class ImWebSocketHandler(
     handler: (suspend (client: ImWebSocketClient, receiveMsg: TursomMsg.ImMsg) -> Unit)?,
   ) {
     if (handler == null) {
-      broadcastHandlerMap.invalidate(channel)
+      broadcastHandlerMap.remove(channel)
     } else {
-      broadcastHandlerMap.put(channel, handler)
+      broadcastHandlerMap[channel] = handler
     }
   }
 }

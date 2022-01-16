@@ -38,17 +38,18 @@ message LoginResult {
 
 enum FailType {
   UNKNOWN = 0;
-  IN_BLACKLIST = 1;
-  TARGET_NOT_LOGIN = 2;
-  MSG_SAVE_FAILURE = 3;
-  TARGET_IS_EMPTY = 4;
-  GROUP_NOT_EXIST = 5;
-  GROUP_MUTED = 6;
-  GROUP_USER_MUTED = 7;
-  USER_NOT_IN_GROUP = 8;
+  IN_BLACKLIST = 1; // 在对象的黑名单中
+  TARGET_NOT_LOGIN = 2; // 对象未登录
+  MSG_SAVE_FAILURE = 3; // 消息存储失败
+  TARGET_IS_EMPTY = 4; // 目标为空
+  GROUP_NOT_EXIST = 5; // 群组不存在
+  GROUP_MUTED = 6; // 群组被禁言
+  GROUP_USER_MUTED = 7; // 当前用户被群组禁言
+  USER_NOT_IN_GROUP = 8; // 当前用户不在群组中
 }
 
 message MsgContent {
+  string reqId = 3;
   oneof content {
     string msg = 1;
     google.protobuf.Any ext = 2;

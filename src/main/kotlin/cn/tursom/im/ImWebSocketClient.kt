@@ -14,7 +14,6 @@ import io.netty.channel.socket.SocketChannel
 import io.netty.util.AttributeKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
 import java.net.URI
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -68,6 +67,8 @@ open class ImWebSocketClient(
     internal set
   val coroutineScope = CoroutineScope(Dispatchers.Default)
   var currentUserId by attributeDelegation(currentUserIdAttr, ::ch)
+    internal set
+  var login = false
     internal set
 
   fun write(msg: MessageLite): ChannelFuture {
@@ -135,13 +136,15 @@ open class ImWebSocketClient(
         }
         cont.resume(receiveMsg.listenBroadcastResponse.success)
       }
-      write(TursomMsg.ImMsg.newBuilder()
-        .setListenBroadcastRequest(
-          TursomMsg.ListenBroadcastRequest.newBuilder()
-            .setReqId(reqId)
-            .setChannel(channel)
-        )
-        .build())
+      write(
+        TursomMsg.ImMsg.newBuilder()
+          .setListenBroadcastRequest(
+            TursomMsg.ListenBroadcastRequest.newBuilder()
+              .setReqId(reqId)
+              .setChannel(channel)
+          )
+          .build()
+      )
     }
   }
 
@@ -151,14 +154,16 @@ open class ImWebSocketClient(
     val reqId = imSnowflake.id.base62()
     // 取消监听广播
     handler.registerSendBroadcastHandler(channel, null)
-    write(TursomMsg.ImMsg.newBuilder()
-      .setListenBroadcastRequest(
-        TursomMsg.ListenBroadcastRequest.newBuilder()
-          .setReqId(reqId)
-          .setChannel(channel)
-          .setCancelListen(true)
-      )
-      .build())
+    write(
+      TursomMsg.ImMsg.newBuilder()
+        .setListenBroadcastRequest(
+          TursomMsg.ListenBroadcastRequest.newBuilder()
+            .setReqId(reqId)
+            .setChannel(channel)
+            .setCancelListen(true)
+        )
+        .build()
+    )
   }
 
   @Suppress("UsePropertyAccessSyntax")
@@ -192,32 +197,40 @@ open class ImWebSocketClient(
     channel: Int,
     msg: String,
   ): TursomMsg.ImMsg {
-    return sendBroadcast(channel, TursomMsg.MsgContent.newBuilder()
-      .setMsg(msg))
+    return sendBroadcast(
+      channel, TursomMsg.MsgContent.newBuilder()
+        .setMsg(msg)
+    )
   }
 
   suspend fun sendBroadcast(
     channel: Int,
     msg: Any,
   ): TursomMsg.ImMsg {
-    return sendBroadcast(channel, TursomMsg.MsgContent.newBuilder()
-      .setExt(msg))
+    return sendBroadcast(
+      channel, TursomMsg.MsgContent.newBuilder()
+        .setExt(msg)
+    )
   }
 
   suspend fun <T : Message> sendBroadcast(
     channel: Int,
     msg: T,
   ): TursomMsg.ImMsg {
-    return sendBroadcast(channel, TursomMsg.MsgContent.newBuilder()
-      .setExt(Any.pack(msg)))
+    return sendBroadcast(
+      channel, TursomMsg.MsgContent.newBuilder()
+        .setExt(Any.pack(msg))
+    )
   }
 
   suspend fun <BuilderType : GeneratedMessageV3.Builder<BuilderType>> sendBroadcast(
     channel: Int,
     msg: BuilderType,
   ): TursomMsg.ImMsg {
-    return sendBroadcast(channel, TursomMsg.MsgContent.newBuilder()
-      .setExt(Any.pack(msg.build())))
+    return sendBroadcast(
+      channel, TursomMsg.MsgContent.newBuilder()
+        .setExt(Any.pack(msg.build()))
+    )
   }
 
   suspend fun allocateNode(currentNodeName: String = "") {
@@ -229,18 +242,20 @@ open class ImWebSocketClient(
         imSnowflake = Snowflake(receiveMsg.allocateNodeResponse.node)
         cont.resume(Unit)
       }
-      write(TursomMsg.ImMsg.newBuilder()
-        .setAllocateNodeRequest(
-          TursomMsg.AllocateNodeRequest.newBuilder()
-            .setReqId(reqId)
-            .setCurrentNodeName(currentNodeName)
-        )
-        .build())
+      write(
+        TursomMsg.ImMsg.newBuilder()
+          .setAllocateNodeRequest(
+            TursomMsg.AllocateNodeRequest.newBuilder()
+              .setReqId(reqId)
+              .setCurrentNodeName(currentNodeName)
+          )
+          .build()
+      )
     }
   }
 
   override fun onClose() {
     super.onClose()
-    coroutineScope.cancel()
+    login = false
   }
 }
