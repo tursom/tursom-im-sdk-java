@@ -1,3 +1,7 @@
+import cn.tursom.gradle.`ts-coroutine`
+import cn.tursom.gradle.`ts-delegation`
+import cn.tursom.gradle.`ts-log`
+import cn.tursom.gradle.`ts-ws-client`
 import com.google.protobuf.gradle.*
 
 buildscript {
@@ -25,7 +29,7 @@ apply(plugin = "ts-gradle")
 plugins {
   java
   kotlin("jvm") version "1.6.10"
-  id("com.google.protobuf") version "0.8.16"
+  id("com.google.protobuf") version "0.8.18"
   `maven-publish`
 }
 
@@ -48,40 +52,37 @@ configurations {
 }
 
 dependencies {
-  val tursomServerVersion = "1.0-SNAPSHOT"
-
   implementation(kotlin("stdlib"))
   api(group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version = "1.6.0")
-  api(group = "cn.tursom", name = "ts-delegation", version = tursomServerVersion)
-  api(group = "cn.tursom", name = "ts-ws-client", version = tursomServerVersion)
-  api(group = "cn.tursom", name = "ts-coroutine", version = tursomServerVersion)
-//  implementation(group = "cn.tursom", name = "ts-reflect", version = tursomServerVersion)
-  implementation(group = "cn.tursom", name = "ts-log", version = tursomServerVersion)
-  api(group = "com.google.protobuf", name = "protobuf-java", version = "3.17.3")
+  `ts-delegation`
+  `ts-ws-client`
+  `ts-coroutine`
+  `ts-log`
+  api(group = "com.google.protobuf", name = "protobuf-java", version = "3.19.4")
   implementation(group = "com.github.ben-manes.caffeine", name = "caffeine", version = "2.9.2")
 
-  testImplementation(group = "junit", name = "junit", version = "4.12")
+  testImplementation(group = "junit", name = "junit", version = "4.13.2")
 }
 
 protobuf {
   protoc {
-    artifact = "com.google.protobuf:protoc:3.17.1"
+    artifact = "com.google.protobuf:protoc:3.20.0"
   }
   generatedFilesBaseDir = "$projectDir/src"
-  plugins {
-    id("grpc") {
-      artifact = "io.grpc:protoc-gen-grpc-java:1.38.0"
-    }
-  }
-  generateProtoTasks {
-    all().forEach {
-      it.plugins {
-        id("grpc") {
-          outputSubDir = "java"
-        }
-      }
-    }
-  }
+  //plugins {
+  //  id("grpc") {
+  //    artifact = "io.grpc:protoc-gen-grpc-java:1.38.0"
+  //  }
+  //}
+  //generateProtoTasks {
+  //  all().forEach {
+  //    it.plugins {
+  //      id("grpc") {
+  //        outputSubDir = "java"
+  //      }
+  //    }
+  //  }
+  //}
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
