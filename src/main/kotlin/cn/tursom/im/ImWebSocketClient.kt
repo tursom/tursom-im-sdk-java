@@ -27,16 +27,25 @@ open class ImWebSocketClient(
   compressed: Boolean = true,
   maxContextLength: Int = 4096,
   headers: Map<String, String>? = null,
-  handshakerUri: URI? = null,
+  handshakeUri: URI? = null,
   autoRelease: Boolean = true,
+  signerContainer: SignerContainer = SignerContainerImpl(),
+  encryptDecoder: EncryptDecoder = EncryptDecoderImpl(),
   initChannel: ((ch: SocketChannel) -> Unit)? = null,
 ) : WebSocketClient<ImWebSocketClient, ImWebSocketHandler>(
-  url, handler, autoWrap, log, compressed, maxContextLength,
-  headers, handshakerUri, autoRelease, initChannel
-) {
+  url = url,
+  handler = handler,
+  autoWrap = autoWrap,
+  log = log,
+  compressed = compressed,
+  maxContextLength = maxContextLength,
+  headers = headers,
+  handshakeUri = handshakeUri,
+  autoRelease = autoRelease,
+  initChannel = initChannel
+), SignerContainer by signerContainer, EncryptDecoder by encryptDecoder {
   companion object {
-    private val currentUserIdAttr: AttributeKey<String?> =
-      AttributeKey.newInstance("currentUserId")
+    private val currentUserIdAttr: AttributeKey<String?> = AttributeKey.newInstance("currentUserId")
   }
 
   constructor(
@@ -49,10 +58,12 @@ open class ImWebSocketClient(
     headers: Map<String, String>? = null,
     handshakerUri: URI? = null,
     autoRelease: Boolean = true,
+    signerContainer: SignerContainer = SignerContainerImpl(),
+    encryptDecoder: EncryptDecoder = EncryptDecoderImpl(),
     initChannel: ((ch: SocketChannel) -> Unit)? = null,
   ) : this(
     url,
-    ImWebSocketHandler(token),
+    ImWebSocketHandler(token, signerContainer = signerContainer, encryptDecoder = encryptDecoder),
     autoWrap,
     log,
     compressed,
@@ -60,15 +71,19 @@ open class ImWebSocketClient(
     headers,
     handshakerUri,
     autoRelease,
+    signerContainer,
+    encryptDecoder,
     initChannel
   )
 
-  var imSnowflake = Snowflake(0)
+  var imSnowflake = defaultSnowflake
     internal set
   val coroutineScope = CoroutineScope(Dispatchers.Default)
   var currentUserId by attributeDelegation(currentUserIdAttr, ::ch)
     internal set
   var login = false
+    internal set
+  var onLogin = false
     internal set
 
   fun write(msg: MessageLite): ChannelFuture {
@@ -101,13 +116,65 @@ open class ImWebSocketClient(
     reqId: String = imSnowflake.id.base62(),
   ): ChannelFuture = sendExtMsg(receiver, ext.build(), reqId)
 
+  fun sendSignedMsg(
+    receiver: String,
+    msg: TursomMsg.SignedMsg,
+    reqId: String = imSnowflake.id.base62(),
+  ): ChannelFuture {
+    return write(
+      TursomMsg.ImMsg.newBuilder()
+        .setSendMsgRequest(
+          TursomMsg.SendMsgRequest.newBuilder()
+            .setReceiver(receiver)
+            .setReqId(reqId)
+            .setContent(
+              TursomMsg.MsgContent.newBuilder()
+                .setSigned(msg)
+            )
+        )
+        .build()
+    )
+  }
+
+  fun sendSignedMsg(
+    receiver: String,
+    msg: TursomMsg.SignedMsg.Builder,
+    reqId: String = imSnowflake.id.base62(),
+  ): ChannelFuture = sendSignedMsg(receiver, msg.build(), reqId)
+
+  fun sendEncryptMsg(
+    receiver: String,
+    msg: TursomMsg.EncryptMsg,
+    reqId: String = imSnowflake.id.base62(),
+  ): ChannelFuture {
+    return write(
+      TursomMsg.ImMsg.newBuilder()
+        .setSendMsgRequest(
+          TursomMsg.SendMsgRequest.newBuilder()
+            .setReceiver(receiver)
+            .setReqId(reqId)
+            .setContent(
+              TursomMsg.MsgContent.newBuilder()
+                .setEncrypt(msg)
+            )
+        )
+        .build()
+    )
+  }
+
+  fun sendEncryptMsg(
+    receiver: String,
+    msg: TursomMsg.EncryptMsg.Builder,
+    reqId: String = imSnowflake.id.base62(),
+  ) = sendEncryptMsg(receiver, msg.build(), reqId)
+
   suspend fun call(
     receiver: String,
     ext: Message,
     reqId: String = imSnowflake.id.base62(),
   ): TursomMsg.ImMsg {
     return suspendCoroutine { cont ->
-      handler.registerChatMsgResult(reqId) { _, receiveMsg ->
+      handler.registerChatMsgResultHandler(reqId) { _, receiveMsg ->
         cont.resume(receiveMsg)
       }
       sendExtMsg(receiver, ext, reqId)
@@ -120,6 +187,25 @@ open class ImWebSocketClient(
     reqId: String = imSnowflake.id.base62(),
   ): TursomMsg.ImMsg = call(receiver, ext.build(), reqId)
 
+  suspend fun call(
+    receiver: String,
+    msg: TursomMsg.SignedMsg,
+    reqId: String = imSnowflake.id.base62(),
+  ): TursomMsg.ImMsg {
+    return suspendCoroutine { cont ->
+      handler.registerChatMsgResultHandler(reqId) { _, receiveMsg ->
+        cont.resume(receiveMsg)
+      }
+      sendSignedMsg(receiver, msg, reqId)
+    }
+  }
+
+  suspend fun call(
+    receiver: String,
+    msg: TursomMsg.SignedMsg.Builder,
+    reqId: String = imSnowflake.id.base62(),
+  ): TursomMsg.ImMsg = call(receiver, msg.build(), reqId)
+
   suspend fun listenBroadcast(
     channel: Int,
     msgHandler: (suspend (client: ImWebSocketClient, receiveMsg: TursomMsg.ImMsg) -> Unit)? = null,
@@ -127,7 +213,7 @@ open class ImWebSocketClient(
     val reqId = imSnowflake.id.base62()
     // 监听广播
     return suspendCoroutine { cont ->
-      handler.handleMsg(TursomMsg.ImMsg.ContentCase.LISTENBROADCASTRESPONSE) { _, receiveMsg ->
+      handler.registerMsgHandle(TursomMsg.ImMsg.ContentCase.LISTENBROADCASTRESPONSE) { _, receiveMsg ->
         if (receiveMsg.listenBroadcastResponse.success) {
           handler.registerSendBroadcastHandler(
             channel,
@@ -173,7 +259,7 @@ open class ImWebSocketClient(
   ): TursomMsg.ImMsg {
     val reqId = imSnowflake.id.base62()
     return suspendCoroutine { cont ->
-      handler.registerSendBroadcastResult(reqId) { _, receiveMsg ->
+      handler.registerSendBroadcastResultHandler(reqId) { _, receiveMsg ->
         cont.resume(receiveMsg)
       }
       write(TursomMsg.ImMsg.newBuilder()
@@ -223,6 +309,26 @@ open class ImWebSocketClient(
     )
   }
 
+  suspend fun sendBroadcast(
+    channel: Int,
+    msg: TursomMsg.SignedMsg,
+  ): TursomMsg.ImMsg {
+    return sendBroadcast(
+      channel, TursomMsg.MsgContent.newBuilder()
+        .setSigned(msg)
+    )
+  }
+
+  suspend fun sendBroadcast(
+    channel: Int,
+    msg: TursomMsg.EncryptMsg,
+  ): TursomMsg.ImMsg {
+    return sendBroadcast(
+      channel, TursomMsg.MsgContent.newBuilder()
+        .setEncrypt(msg)
+    )
+  }
+
   suspend fun <BuilderType : GeneratedMessageV3.Builder<BuilderType>> sendBroadcast(
     channel: Int,
     msg: BuilderType,
@@ -236,9 +342,10 @@ open class ImWebSocketClient(
   suspend fun allocateNode(currentNodeName: String = "") {
     val reqId = imSnowflake.id.base62()
     suspendCoroutine<Unit> { cont ->
-      handler.handleMsg(TursomMsg.ImMsg.ContentCase.ALLOCATENODERESPONSE) { _, receiveMsg ->
-        handler.handleMsg(TursomMsg.ImMsg.ContentCase.ALLOCATENODERESPONSE, null)
-
+      var remover: HandlerRemover? = null
+      remover = handler.registerMsgHandle(TursomMsg.ImMsg.ContentCase.ALLOCATENODERESPONSE) { client, receiveMsg ->
+        if (client !== this) return@registerMsgHandle
+        remover?.remove()
         imSnowflake = Snowflake(receiveMsg.allocateNodeResponse.node)
         cont.resume(Unit)
       }
@@ -254,8 +361,14 @@ open class ImWebSocketClient(
     }
   }
 
+  override fun onOpen() {
+    super.onOpen()
+    onLogin = true
+  }
+
   override fun onClose() {
     super.onClose()
     login = false
+    onLogin = false
   }
 }

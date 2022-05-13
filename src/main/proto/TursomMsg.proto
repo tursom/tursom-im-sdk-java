@@ -29,6 +29,7 @@ message ImMsg {
 
 message LoginRequest {
   string token = 1;
+  bool tempId = 2;
 }
 
 message LoginResult {
@@ -53,7 +54,27 @@ message MsgContent {
   oneof content {
     string msg = 1;
     google.protobuf.Any ext = 2;
+    SignedMsg signed = 4;
+    EncryptMsg encrypt = 5;
   }
+}
+
+/**
+ * SignedMsg 签名过的消息
+ * IM 服务端并不会校验签名的有效性，需要客户端自行校验
+ */
+message SignedMsg {
+  bytes msg = 1; // 序列化的 MsgContent
+  bytes publicKey = 2;
+  bytes sign = 3;
+  string algorithm = 4;
+  string digest = 5; // default digest is SHA256
+}
+
+message EncryptMsg {
+  bytes msg = 1;
+  bytes publicKey = 2;
+  string algorithm = 3;
 }
 
 message SendMsgRequest {

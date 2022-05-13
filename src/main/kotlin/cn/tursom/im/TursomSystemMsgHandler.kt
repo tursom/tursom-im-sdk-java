@@ -1,10 +1,11 @@
 package cn.tursom.im
 
-import cn.tursom.core.reflect.MethodInspector
-import cn.tursom.core.reflect.getType
+import cn.tursom.core.context.ArrayContextEnv
+import cn.tursom.core.context.ContextEnv
 import cn.tursom.core.uncheckedCast
+import cn.tursom.im.ext.LiveDanmuRecordHandler
+import cn.tursom.im.ext.LiveDanmuRecordListHandler
 import cn.tursom.im.protobuf.TursomMsg
-import cn.tursom.im.protobuf.TursomSystemMsg
 import cn.tursom.log.impl.Slf4jImpl
 import com.github.benmanes.caffeine.cache.Cache
 import com.github.benmanes.caffeine.cache.Caffeine
@@ -12,161 +13,147 @@ import com.google.protobuf.Message
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
+/**
+ * @param imWebSocketHandler register to [imWebSocketHandler]'s [TursomMsg.ImMsg.ContentCase.CHATMSG] handler
+ */
 @Suppress("MemberVisibilityCanBePrivate", "unused")
-class TursomSystemMsgHandler(
-  imWebSocketHandler: ImWebSocketHandler? = null,
-) {
+open class TursomSystemMsgHandler(
+  private val signerContainer: SignerContainer,
+  private val encryptDecoder: EncryptDecoder,
+) : TursomSystemMsgHandlerRegister {
   companion object : Slf4jImpl() {
+    val ctxEnv: ContextEnv = ArrayContextEnv()
   }
 
   val handlerTypeUrlSet: Set<String>
     get() {
       val handlerTypeUrlSet = HashSet<String>()
-      handlerMap.forEach { (clazz, _) ->
+      extHandlerMap.forEach { (clazz, _) ->
         handlerTypeUrlSet.add(AnyUtils.getTypeUrl(clazz))
       }
       return handlerTypeUrlSet
     }
 
-  private val handlerMap = ConcurrentHashMap<Class<out Message>,
+  private val extHandlerMap = ConcurrentHashMap<Class<out Message>,
     suspend (
       unpackMsg: Any,
       msgSender: MsgSender,
     ) -> Unit>()
 
-  private val msgContextHandlerMap: Cache<TursomMsg.MsgContent.ContentCase,
+  private val handlerMap = ConcurrentHashMap<TursomMsg.MsgContent.ContentCase,
     suspend (
       msgSender: MsgSender,
-    ) -> Unit> =
-    Caffeine.newBuilder()
-      .expireAfterWrite(1, TimeUnit.MINUTES)
-      .build()
+    ) -> Unit>()
 
-  private val liveDanmuRecordListHandlerMap: Cache<String,
+  private val tempHandlerMap: Cache<TursomMsg.MsgContent.ContentCase,
     suspend (
-      listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecordList,
       msgSender: MsgSender,
-    ) -> Unit> =
-    Caffeine.newBuilder()
-      .expireAfterWrite(1, TimeUnit.MINUTES)
-      .build()
+    ) -> Unit> = Caffeine.newBuilder()
+    .expireAfterWrite(1, TimeUnit.MINUTES)
+    .build()
 
-  private val liveDanmuRecordHandlerMap: Cache<String,
-    suspend (
-      listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecord,
-      msgSender: MsgSender,
-    ) -> Unit> =
-    Caffeine.newBuilder()
-      .expireAfterWrite(1, TimeUnit.MINUTES)
-      .build()
+  val ctx = ctxEnv.newContext()
 
-  var default: suspend (client: ImWebSocketClient, receiveMsg: TursomMsg.ImMsg) -> Unit = { client, receiveMsg ->
-    msgContextHandlerMap.getIfPresent(receiveMsg.broadcast.content.contentCase)
-      ?.invoke(BroadcastMsgSender(client, receiveMsg))
+  var default: suspend (client: ImWebSocketClient, msgSender: MsgSender) -> Unit = { client, msgSender ->
+    (tempHandlerMap.getIfPresent(msgSender.content.contentCase) ?: handlerMap[msgSender.content.contentCase])
+      ?.invoke(msgSender)
   }
 
   init {
-    if (imWebSocketHandler != null) {
-      registerToImWebSocketHandler(imWebSocketHandler)
-    }
-
-    registerReturnLiveDanmuRecordListHandler { listenLiveRoom, msgSender ->
-      val handler = liveDanmuRecordListHandlerMap.getIfPresent(listenLiveRoom.reqId)
-      handler?.invoke(listenLiveRoom, msgSender)
-    }
-    registerReturnLiveDanmuRecordHandler { listenLiveRoom, msgSender ->
-      val handler = liveDanmuRecordHandlerMap.getIfPresent(listenLiveRoom.reqId)
-      handler?.invoke(listenLiveRoom, msgSender)
-    }
+    LiveDanmuRecordListHandler.register(this)
+    LiveDanmuRecordHandler.register(this)
   }
 
-  /**
-   * 解析对象的所有方法，并将该方法注册为处理方法
-   * 方法签名为:
-   * suspend fun 方法名(
-   *     msg: T,
-   *     msgSender: MsgSender,
-   * )
-   * T 为 Message 的子类
-   */
-  fun registerHandlerObject(handler: Any) {
-    MethodInspector.forEachSuspendMethod(
-      handler,
-      Unit::class.java,
-      Message::class.java,
-      getType<MsgSender>()
-    ) { method, handlerCallback ->
-      registerHandler(method.parameterTypes[method.parameterTypes.size - 3].uncheckedCast(), handlerCallback)
-    }
-  }
-
-  fun default(handler: suspend (client: ImWebSocketClient, receiveMsg: TursomMsg.ImMsg) -> Unit) {
+  fun default(handler: suspend (client: ImWebSocketClient, msgSender: MsgSender) -> Unit) {
     default = handler
   }
 
-  fun handle(
+  override fun <T : Message> registerHandler(
+    clazz: Class<T>,
+    handler: suspend (
+      unpackMsg: T,
+      msgSender: MsgSender,
+    ) -> Unit,
+  ) {
+    extHandlerMap[clazz] = handler.uncheckedCast()
+  }
+
+  fun registerHandler(
     contentCase: TursomMsg.MsgContent.ContentCase,
     handler: suspend (
       msgSender: MsgSender,
     ) -> Unit,
   ) {
-    msgContextHandlerMap.put(contentCase, handler)
+    handlerMap[contentCase] = handler
   }
 
-  fun registerToImWebSocketHandler(imWebSocketHandler: ImWebSocketHandler) {
-    imWebSocketHandler.handleMsg(TursomMsg.ImMsg.ContentCase.CHATMSG, ::handle)
-    imWebSocketHandler.system = this
-  }
-
-  fun addLiveDanmuRecordListHandler(
-    reqId: String,
+  fun registerTempHandler(
+    contentCase: TursomMsg.MsgContent.ContentCase,
     handler: suspend (
-      listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecordList,
       msgSender: MsgSender,
     ) -> Unit,
   ) {
-    liveDanmuRecordListHandlerMap.put(reqId, handler)
+    tempHandlerMap.put(contentCase, handler)
   }
 
-  fun addLiveDanmuRecordHandler(
-    reqId: String,
-    handler: suspend (
-      listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecord,
-      msgSender: MsgSender,
-    ) -> Unit,
-  ) {
-    liveDanmuRecordHandlerMap.put(reqId, handler)
-  }
-
-  suspend fun handle(client: ImWebSocketClient, receiveMsg: TursomMsg.ImMsg) {
-    if (receiveMsg.contentCase != TursomMsg.ImMsg.ContentCase.CHATMSG ||
-      receiveMsg.chatMsg.content.contentCase != TursomMsg.MsgContent.ContentCase.EXT
-    ) {
-      default.invoke(client, receiveMsg)
-      return
+  suspend fun handleChat(client: ImWebSocketClient, receiveMsg: TursomMsg.ImMsg) {
+    if (receiveMsg.contentCase != TursomMsg.ImMsg.ContentCase.CHATMSG) {
+      throw UnsupportedOperationException()
     }
 
-    val ext = receiveMsg.chatMsg.content.ext
-    handleExt(ext, SystemMsgSender(client, receiveMsg))
+    val content = receiveMsg.chatMsg.content
+    when (content.contentCase) {
+      TursomMsg.MsgContent.ContentCase.EXT -> {
+        val ext = content.ext
+        handleExt(ext, SystemMsgSender(client, receiveMsg))
+      }
+      TursomMsg.MsgContent.ContentCase.SIGNED -> {
+        val signed = content.signed
+        if (!content.signed.check(signerContainer)) {
+          return
+        }
+
+        val ext = com.google.protobuf.Any.parseFrom(signed.msg)
+        handleExt(ext, SystemMsgSender(client, receiveMsg))
+      }
+      TursomMsg.MsgContent.ContentCase.ENCRYPT -> {
+        val bytes = encryptDecoder.decode(content.encrypt) ?: return
+        val ext = com.google.protobuf.Any.parseFrom(bytes)
+        handleExt(ext, SystemMsgSender(client, receiveMsg))
+      }
+      else -> default.invoke(client, SystemMsgSender(client, receiveMsg))
+    }
   }
 
   suspend fun handleBroadcast(client: ImWebSocketClient, receiveMsg: TursomMsg.ImMsg) {
-    if (receiveMsg.contentCase != TursomMsg.ImMsg.ContentCase.BROADCAST ||
-      receiveMsg.broadcast.content.contentCase != TursomMsg.MsgContent.ContentCase.EXT
-    ) {
-      default.invoke(client, receiveMsg)
-      return
+    if (receiveMsg.contentCase != TursomMsg.ImMsg.ContentCase.BROADCAST) {
+      throw UnsupportedOperationException()
     }
 
-    val ext = receiveMsg.broadcast.content.ext
-    handleExt(ext, BroadcastMsgSender(client, receiveMsg))
+    val content = receiveMsg.broadcast.content
+    when (content.contentCase) {
+      TursomMsg.MsgContent.ContentCase.EXT -> {
+        val ext = content.ext
+        handleExt(ext, BroadcastMsgSender(client, receiveMsg))
+      }
+      TursomMsg.MsgContent.ContentCase.SIGNED -> {
+        val signed = content.signed
+        if (!content.signed.check(signerContainer)) {
+          return
+        }
+
+        val ext = com.google.protobuf.Any.parseFrom(signed.msg)
+        handleExt(ext, BroadcastMsgSender(client, receiveMsg))
+      }
+      else -> default.invoke(client, BroadcastMsgSender(client, receiveMsg))
+    }
   }
 
   suspend fun handleExt(
     ext: com.google.protobuf.Any,
     msgSender: MsgSender,
   ) {
-    handlerMap.forEach { (clazz, handler) ->
+    extHandlerMap.forEach { (clazz, handler) ->
       if (!ext.`is`(clazz)) {
         return@forEach
       }
@@ -179,63 +166,4 @@ class TursomSystemMsgHandler(
     logger.warn("unknown ext type: {}", ext.typeUrl)
     return
   }
-
-  inline fun <reified T : Message> registerHandler(
-    noinline handler: suspend (
-      unpackMsg: T,
-      msgSender: MsgSender,
-    ) -> Unit,
-  ) = registerHandler(T::class.java, handler)
-
-  fun <T : Message> registerHandler(
-    clazz: Class<T>,
-    handler: suspend (
-      unpackMsg: T,
-      msgSender: MsgSender,
-    ) -> Unit,
-  ) {
-    handlerMap[clazz] = handler.uncheckedCast()
-  }
-
-  fun registerListenLiveRoomHandler(
-    handler: suspend (
-      listenLiveRoom: TursomSystemMsg.ListenLiveRoom,
-      msgSender: MsgSender,
-    ) -> Unit,
-  ) = registerHandler(handler)
-
-  fun registerAddMailReceiverHandler(
-    handler: suspend (
-      listenLiveRoom: TursomSystemMsg.AddMailReceiver,
-      msgSender: MsgSender,
-    ) -> Unit,
-  ) = registerHandler(handler)
-
-  fun registerGetLiveDanmuRecordListHandler(
-    handler: suspend (
-      listenLiveRoom: TursomSystemMsg.GetLiveDanmuRecordList,
-      msgSender: MsgSender,
-    ) -> Unit,
-  ) = registerHandler(handler)
-
-  fun registerReturnLiveDanmuRecordListHandler(
-    handler: suspend (
-      listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecordList,
-      msgSender: MsgSender,
-    ) -> Unit,
-  ) = registerHandler(handler)
-
-  fun registerGetLiveDanmuRecordHandler(
-    handler: suspend (
-      listenLiveRoom: TursomSystemMsg.GetLiveDanmuRecord,
-      msgSender: MsgSender,
-    ) -> Unit,
-  ) = registerHandler(handler)
-
-  fun registerReturnLiveDanmuRecordHandler(
-    handler: suspend (
-      listenLiveRoom: TursomSystemMsg.ReturnLiveDanmuRecord,
-      msgSender: MsgSender,
-    ) -> Unit,
-  ) = registerHandler(handler)
 }

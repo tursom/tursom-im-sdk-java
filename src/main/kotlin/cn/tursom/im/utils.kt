@@ -1,17 +1,16 @@
 package cn.tursom.im
 
-import cn.tursom.core.Snowflake
-import cn.tursom.core.base62
-import cn.tursom.core.seconds
+import cn.tursom.core.*
+import cn.tursom.core.encrypt.*
+import cn.tursom.core.reflect.MethodInspector
 import cn.tursom.im.exception.LoginFailedException
 import cn.tursom.im.protobuf.TursomMsg
-import cn.tursom.im.protobuf.TursomSystemMsg
+import cn.tursom.im.protobuf.TursomMsg.EncryptMsg
+import com.google.protobuf.ByteString
 import com.google.protobuf.Message
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.CountDownLatch
 
-val imSnowflake = Snowflake(0)
+internal val defaultSnowflake = Snowflake(0)
 
 fun connect(
   url: String,
@@ -20,7 +19,7 @@ fun connect(
 ): ImWebSocketClient {
   val webSocketClient = ImWebSocketClient(url, token)
   if (onLogin != null) {
-    webSocketClient.handler.handleMsg(TursomMsg.ImMsg.ContentCase.LOGINRESULT, onLogin)
+    webSocketClient.handler.registerMsgHandle(TursomMsg.ImMsg.ContentCase.LOGINRESULT, onLogin)
   }
   webSocketClient.open()
   return webSocketClient
@@ -34,7 +33,7 @@ fun connectAndWait(
   var exception: Throwable? = null
   val cdl = CountDownLatch(1)
   val webSocketClient = ImWebSocketClient(url, token)
-  webSocketClient.handler.handleMsg(TursomMsg.ImMsg.ContentCase.LOGINRESULT) { client, receiveMsg ->
+  webSocketClient.handler.registerMsgHandle(TursomMsg.ImMsg.ContentCase.LOGINRESULT) { client, receiveMsg ->
     if (receiveMsg.loginResult.success) {
       if (onLogin != null) try {
         onLogin(client, receiveMsg)
@@ -49,74 +48,84 @@ fun connectAndWait(
   webSocketClient.open()
 
   cdl.await()
-  if (exception != null) {
-    throw exception!!
-  }
+  exception?.throws()
   return webSocketClient
 }
 
-suspend fun <T> ImWebSocketClient.imRemoteCall(
-  receiver: String,
-  ext: Message,
-  timeoutMs: Long = 5.seconds().toMillis(),
-  registerHandler: (resume: suspend (T) -> Unit) -> Unit,
-): T? {
-  val retChannel = Channel<T>(1)
-  registerHandler { ret ->
-    try {
-      retChannel.send(ret)
-    } catch (e: Exception) {
+fun TursomMsg.SignedMsg.check(signerContainer: SignerContainer): Boolean {
+  val publicKey = publicKey.toByteArray()
+  return when (algorithm) {
+    "RSA" -> {
+      signerContainer.isTrusted(publicKey) && RSA(publicKey).verify(msg.toByteArray(), sign.toByteArray(), realDigest)
     }
-  }
-  val receiveMsg = withTimeoutOrNull(timeoutMs) {
-    call(receiver, ext)
-  } ?: return null
-  if (!receiveMsg.sendMsgResponse.success) return null
-  val ret = withTimeoutOrNull(timeoutMs) { retChannel.receive() }
-  retChannel.close()
-  return ret
-}
-
-suspend fun ImWebSocketClient.callGetLiveDanmuRecordList(
-  receiver: String,
-  roomId: String,
-  skip: Int = 0,
-  limit: Int = 0,
-  timeoutMs: Long = 5.seconds().toMillis(),
-): TursomSystemMsg.ReturnLiveDanmuRecordList? {
-  val callReqId = imSnowflake.id.base62()
-  return imRemoteCall(
-    receiver,
-    TursomSystemMsg.GetLiveDanmuRecordList.newBuilder()
-      .setReqId(callReqId)
-      .setRoomId(roomId)
-      .setSkip(skip)
-      .setLimit(limit)
-      .build(),
-    timeoutMs
-  ) { cont ->
-    handler.system.addLiveDanmuRecordListHandler(callReqId) { listenLiveRoom, _ ->
-      cont(listenLiveRoom)
+    "EC", "ECC" -> {
+      signerContainer.isTrusted(publicKey) && ECC(publicKey).verify(msg.toByteArray(), sign.toByteArray(), realDigest)
     }
+    else -> throw UnsupportedOperationException()
   }
 }
 
-suspend fun ImWebSocketClient.callGetLiveDanmuRecord(
-  receiver: String,
-  liveDanmuRecordId: String,
-  timeoutMs: Long = 5.seconds().toMillis(),
-): TursomSystemMsg.ReturnLiveDanmuRecord? {
-  val callReqId = imSnowflake.id.base62()
-  return imRemoteCall(
-    receiver,
-    TursomSystemMsg.GetLiveDanmuRecord.newBuilder()
-      .setReqId(callReqId)
-      .setLiveDanmuRecordId(liveDanmuRecordId)
-      .build(),
-    timeoutMs
-  ) { cont ->
-    handler.system.addLiveDanmuRecordHandler(callReqId) { listenLiveRoom, _ ->
-      cont(listenLiveRoom)
-    }
+private val TursomMsg.SignedMsg.realDigest
+  get() = digest.ifEmpty { "SHA256" }
+
+
+/**
+ * 解析对象的所有方法，并将该方法注册为处理方法
+ * 方法签名为:
+ * suspend fun 方法名(
+ *     msg: T,
+ *     msgSender: MsgSender,
+ * )
+ * T 为 Message 的子类
+ */
+fun TursomSystemMsgHandler.registerHandlerObject(handler: Any) {
+  MethodInspector.forEachSuspendMethod(
+    handler,
+    Unit::class.java,
+    Message::class.java,
+    MsgSender::class.java,
+  ) { method, handlerCallback ->
+    registerHandler(method.parameterTypes[method.parameterTypes.size - 3].uncheckedCast(), handlerCallback)
   }
 }
+
+fun ByteArray.toSingedMsg(
+  singer: PublicKeyEncrypt,
+  digest: String = "SHA256",
+  algorithm: String = singer.algorithm,
+): TursomMsg.SignedMsg {
+  val sign = singer.sign(this, digest)
+
+  return TursomMsg.SignedMsg.newBuilder()
+    .setMsg(ByteString.copyFrom(this))
+    .setSign(ByteString.copyFrom(sign))
+    .setPublicKey(ByteString.copyFrom(singer.publicKey!!.encoded))
+    .setAlgorithm(algorithm)
+    .build()
+}
+
+fun Message.toSingedMsg(
+  singer: PublicKeyEncrypt,
+  digest: String = "SHA256",
+  algorithm: String = singer.algorithm,
+): TursomMsg.SignedMsg = com.google.protobuf.Any.pack(this).toByteArray().toSingedMsg(singer, digest, algorithm)
+
+fun Message.Builder.toSingedMsg(
+  singer: PublicKeyEncrypt,
+  digest: String = "SHA256",
+  algorithm: String = singer.algorithm,
+) = build().toSingedMsg(singer, digest, algorithm)
+
+fun Message.toEncryptedMsg(
+  singer: PublicKeyEncrypt,
+  algorithm: String = singer.algorithm,
+) = EncryptMsg.newBuilder()
+  .setMsg(ByteString.copyFrom(singer.encrypt(com.google.protobuf.Any.pack(this).toByteArray())))
+  .setAlgorithm(algorithm)
+  .setPublicKey(ByteString.copyFrom(singer.publicKey!!.encoded))
+  .build()!!
+
+fun Message.Builder.toEncryptedMsg(
+  singer: PublicKeyEncrypt,
+  algorithm: String = singer.algorithm,
+) = build().toEncryptedMsg(singer, algorithm)

@@ -1,6 +1,7 @@
 package cn.tursom.im
 
 import cn.tursom.im.protobuf.TursomMsg
+import cn.tursom.im.protobuf.TursomMsg.MsgContent
 import com.google.protobuf.Message
 
 class BroadcastMsgSender(
@@ -9,9 +10,13 @@ class BroadcastMsgSender(
 ) : MsgSender {
   override val sender: String = receiveMsg.broadcast.sender
   override val channel: Int = receiveMsg.broadcast.channel
-  override val reqId: String = receiveMsg.broadcast.reqId
+  override val content: MsgContent = receiveMsg.broadcast.content
 
   override suspend fun send(msg: Message) {
-    client.sendBroadcast(channel, msg)
+    when (msg) {
+      is TursomMsg.SignedMsg -> client.sendBroadcast(channel, msg)
+      is TursomMsg.EncryptMsg -> client.sendBroadcast(channel, msg)
+      else -> client.sendBroadcast(channel, msg)
+    }
   }
 }

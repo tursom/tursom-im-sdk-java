@@ -1,7 +1,4 @@
-import cn.tursom.gradle.`ts-coroutine`
-import cn.tursom.gradle.`ts-delegation`
-import cn.tursom.gradle.`ts-log`
-import cn.tursom.gradle.`ts-ws-client`
+import cn.tursom.gradle.*
 import com.google.protobuf.gradle.*
 
 buildscript {
@@ -28,7 +25,7 @@ apply(plugin = "ts-gradle")
 
 plugins {
   java
-  kotlin("jvm") version "1.6.10"
+  kotlin("jvm") version "1.6.20"
   id("com.google.protobuf") version "0.8.18"
   `maven-publish`
 }
@@ -39,6 +36,7 @@ repositories {
   maven {
     url = uri("https://nvm.tursom.cn/repository/maven-public/")
   }
+  mavenCentral()
 }
 
 configurations {
@@ -53,12 +51,14 @@ configurations {
 
 dependencies {
   implementation(kotlin("stdlib"))
-  api(group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version = "1.6.0")
-  `ts-delegation`
-  `ts-ws-client`
-  `ts-coroutine`
-  `ts-log`
+  api(group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version = "1.6.1")
+  apiTursomServer("ts-delegation")
+  apiTursomServer("ts-ws-client")
+  apiTursomServer("ts-coroutine")
+  ts_log
+  ts_encrypt
   api(group = "com.google.protobuf", name = "protobuf-java", version = "3.19.4")
+  // caffeine 2.9.2 is used for java 8
   implementation(group = "com.github.ben-manes.caffeine", name = "caffeine", version = "2.9.2")
 
   testImplementation(group = "junit", name = "junit", version = "4.13.2")
@@ -66,7 +66,7 @@ dependencies {
 
 protobuf {
   protoc {
-    artifact = "com.google.protobuf:protoc:3.20.0"
+    artifact = "com.google.protobuf:protoc:3.20.1"
   }
   generatedFilesBaseDir = "$projectDir/src"
   //plugins {
@@ -83,6 +83,10 @@ protobuf {
   //    }
   //  }
   //}
+}
+
+tasks.withType<JavaCompile>().configureEach {
+  options.encoding = "UTF-8"
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
