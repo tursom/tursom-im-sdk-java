@@ -2,7 +2,7 @@ package cn.tursom.im
 
 import cn.tursom.core.context.ArrayContextEnv
 import cn.tursom.core.context.ContextEnv
-import cn.tursom.core.uncheckedCast
+import cn.tursom.core.util.uncheckedCast
 import cn.tursom.im.ext.LiveDanmuRecordHandler
 import cn.tursom.im.ext.LiveDanmuRecordListHandler
 import cn.tursom.im.protobuf.TursomMsg

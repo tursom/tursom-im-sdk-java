@@ -1,6 +1,6 @@
 package cn.tursom.im
 
-import cn.tursom.core.seconds
+import cn.tursom.core.util.seconds
 import cn.tursom.core.ws.AbstractWebSocketHandler
 import cn.tursom.im.protobuf.TursomMsg
 import cn.tursom.log.impl.Slf4jImpl

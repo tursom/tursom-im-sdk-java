@@ -1,8 +1,9 @@
 package cn.tursom.im
 
-import cn.tursom.core.base64
+import cn.tursom.core.util.base64
 import cn.tursom.core.encrypt.Encrypt
-import cn.tursom.core.toUTF8String
+import cn.tursom.core.util.toUTF8String
+import cn.tursom.core.util.toUTF8String
 import cn.tursom.im.protobuf.TursomMsg
 
 class EncryptDecoderImpl : EncryptDecoder {

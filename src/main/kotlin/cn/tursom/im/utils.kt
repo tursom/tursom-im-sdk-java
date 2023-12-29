@@ -1,6 +1,6 @@
 package cn.tursom.im
 
-import cn.tursom.core.*
+import cn.tursom.core.util.*
 import cn.tursom.core.encrypt.*
 import cn.tursom.core.reflect.MethodInspector
 import cn.tursom.im.exception.LoginFailedException

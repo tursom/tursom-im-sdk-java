@@ -1,7 +1,7 @@
 package cn.tursom.im
 
-import cn.tursom.core.Snowflake
-import cn.tursom.core.base62
+import cn.tursom.core.util.Snowflake
+import cn.tursom.core.util.base62
 import cn.tursom.core.delegation.ext.NettyAttributeDelegation.Companion.attributeDelegation
 import cn.tursom.core.ws.WebSocketClient
 import cn.tursom.im.protobuf.TursomMsg
